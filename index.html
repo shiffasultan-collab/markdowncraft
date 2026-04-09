@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarkdownCraft — Live Markdown Editor, Preview & Converter</title>
+<meta name="description" content="Free in-browser Markdown editor with live preview, HTML export, table generator and cheat sheet. 100% client-side, no upload, no account.">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.5/dist/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3250;
+    --accent: #6c63ff;
+    --accent2: #a78bfa;
+    --text: #e2e8f0;
+    --muted: #8892b0;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --radius: 10px;
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --mono: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); display: flex; flex-direction: column; min-height: 100vh; }
+
+  /* Header */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.6rem 1.2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; flex-shrink: 0; }
+  .logo { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: var(--text); }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+  .logo-text { font-size: 1.1rem; font-weight: 700; }
+  .logo-text span { color: var(--accent2); }
+  nav { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 0.25rem 0.5rem; border-radius: 5px; transition: color 0.2s, background 0.2s; }
+  nav a:hover { color: var(--text); background: var(--surface2); }
+  .pro-badge { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; padding: 0.22rem 0.6rem; border-radius: 20px; font-size: 0.72rem; font-weight: 600; cursor: pointer; border: none; }
+
+  /* Toolbar */
+  .toolbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.45rem 1rem; display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; flex-shrink: 0; }
+  .tb-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.28rem 0.55rem; font-size: 0.82rem; cursor: pointer; font-family: var(--mono); transition: background 0.2s, border-color 0.2s; white-space: nowrap; }
+  .tb-btn:hover { background: var(--border); border-color: var(--accent); }
+  .tb-sep { width: 1px; height: 20px; background: var(--border); margin: 0 0.2rem; }
+  .view-toggle { display: flex; gap: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-left: auto; }
+  .view-btn { background: none; border: none; color: var(--muted); padding: 0.28rem 0.65rem; font-size: 0.8rem; cursor: pointer; transition: background 0.2s, color 0.2s; }
+  .view-btn.active { background: var(--accent); color: white; }
+  .stats-pill { font-size: 0.72rem; color: var(--muted); padding: 0.25rem 0.6rem; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; white-space: nowrap; }
+
+  /* Editor area */
+  .editor-area { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+  .pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .pane-label { background: var(--surface2); border-bottom: 1px solid var(--border); padding: 0.3rem 0.8rem; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; justify-content: space-between; }
+  .pane + .pane { border-left: 2px solid var(--border); }
+  .md-input { flex: 1; background: var(--bg); color: var(--text); border: none; outline: none; padding: 1rem 1.2rem; font-family: var(--mono); font-size: 0.9rem; line-height: 1.7; resize: none; tab-size: 2; }
+  .md-preview { flex: 1; overflow-y: auto; padding: 1.2rem 1.6rem; line-height: 1.75; font-size: 0.95rem; }
+  
+  /* Markdown rendered styles */
+  .md-preview h1,.md-preview h2,.md-preview h3,.md-preview h4,.md-preview h5,.md-preview h6 { color: var(--text); margin: 1.2em 0 0.5em; line-height: 1.3; }
+  .md-preview h1 { font-size: 1.8em; border-bottom: 2px solid var(--border); padding-bottom: 0.3em; }
+  .md-preview h2 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+  .md-preview h3 { font-size: 1.15em; }
+  .md-preview p { margin: 0.6em 0; color: var(--text); }
+  .md-preview a { color: var(--accent2); }
+  .md-preview code { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 0.1em 0.35em; font-family: var(--mono); font-size: 0.85em; color: #ff79c6; }
+  .md-preview pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0.8em 0; }
+  .md-preview pre code { background: none; border: none; padding: 0; color: var(--accent2); font-size: 0.85em; }
+  .md-preview blockquote { border-left: 3px solid var(--accent); margin: 0.8em 0; padding: 0.4em 1em; background: var(--surface2); border-radius: 0 6px 6px 0; color: var(--muted); }
+  .md-preview ul,.md-preview ol { margin: 0.5em 0 0.5em 1.5em; }
+  .md-preview li { margin: 0.2em 0; }
+  .md-preview table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+  .md-preview th,.md-preview td { border: 1px solid var(--border); padding: 0.4em 0.8em; text-align: left; }
+  .md-preview th { background: var(--surface2); font-weight: 600; }
+  .md-preview tr:hover td { background: var(--surface2); }
+  .md-preview img { max-width: 100%; border-radius: 6px; }
+  .md-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
+  .md-preview strong { color: var(--text); }
+  .md-preview em { color: var(--muted); }
+  .md-preview input[type=checkbox] { margin-right: 0.4em; }
+
+  /* Hidden pane */
+  .pane.hidden { display: none; }
+
+  /* Side panels (cheat sheet, table gen) */
+  .side-panel { width: 320px; border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
+  .side-panel.hidden { display: none; }
+  .side-panel-header { padding: 0.5rem 0.8rem; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; font-weight: 600; }
+  .side-panel-header button { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; }
+  .side-panel-body { flex: 1; overflow-y: auto; padding: 0.8rem; font-size: 0.8rem; }
+
+  /* Cheat sheet */
+  .cs-section { margin-bottom: 0.8rem; }
+  .cs-section h4 { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+  .cs-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.25rem; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
+  .cs-syntax { font-family: var(--mono); color: var(--accent2); font-size: 0.78rem; flex: 1; }
+  .cs-result { color: var(--muted); font-size: 0.75rem; flex: 1; text-align: right; }
+  .cs-insert { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.68rem; cursor: pointer; white-space: nowrap; }
+  .cs-insert:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* Table generator */
+  .tg-controls { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.6rem; }
+  .tg-controls label { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 0.3rem; }
+  .tg-controls input[type=number] { width: 52px; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; color: var(--text); padding: 0.25rem 0.4rem; font-size: 0.82rem; outline: none; }
+  .tg-table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
+  .tg-table th, .tg-table td { border: 1px solid var(--border); }
+  .tg-table input { width: 100%; background: var(--surface2); border: none; color: var(--text); padding: 0.3rem 0.4rem; font-size: 0.78rem; outline: none; font-family: var(--mono); }
+  .tg-table th input { font-weight: 600; color: var(--accent2); }
+  .tg-insert-btn { background: var(--accent); color: white; border: none; border-radius: 6px; padding: 0.4rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; width: 100%; margin-top: 0.4rem; }
+
+  /* HTML output panel */
+  .html-out-panel { background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+  .html-out-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.8rem; background: var(--surface2); border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+  .html-out-header span { color: var(--muted); }
+  .copy-btn { background: var(--accent); color: white; border: none; border-radius: 5px; padding: 0.22rem 0.7rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+  .copy-btn:hover { opacity: 0.85; }
+  .copy-btn.copied { background: var(--success); }
+  .dl-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 0.22rem 0.7rem; font-size: 0.75rem; cursor: pointer; }
+  .html-out-panel pre { background: var(--bg); padding: 0.7rem 1rem; font-family: var(--mono); font-size: 0.76rem; color: var(--accent2); overflow-x: auto; max-height: 180px; overflow-y: auto; line-height: 1.5; }
+  .html-out-panel.hidden { display: none; }
+
+  /* Footer */
+  .footer-links { display: flex; gap: 0.7rem; justify-content: center; flex-wrap: wrap; padding: 1rem; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .footer-links a { color: var(--muted); text-decoration: none; font-size: 0.75rem; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--accent2); }
+  .footer-links a.current { color: var(--accent2); font-weight: 600; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 1.2rem; right: 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.9rem; font-size: 0.82rem; color: var(--text); box-shadow: 0 4px 20px rgba(0,0,0,0.4); z-index: 999; opacity: 0; transform: translateY(8px); transition: opacity 0.3s, transform 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: none; }
+
+  /* Pro modal */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.8rem; max-width: 380px; width: 90%; text-align: center; }
+  .modal h2 span { color: var(--accent2); }
+  .modal p { color: var(--muted); font-size: 0.88rem; margin: 0.4rem 0 1rem; }
+  .modal ul { text-align: left; list-style: none; padding: 0; margin: 0 0 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; }
+  .modal ul li::before { content: '✓ '; color: var(--success); font-weight: 700; }
+  .modal ul li { font-size: 0.83rem; color: var(--muted); }
+  .modal .cta { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: white; border: none; border-radius: 8px; padding: 0.7rem 1.4rem; font-size: 0.95rem; font-weight: 700; cursor: pointer; width: 100%; margin-bottom: 0.4rem; }
+  .modal .close-modal { background: none; border: none; color: var(--muted); font-size: 0.78rem; cursor: pointer; }
+
+  @media(max-width:700px) {
+    .editor-area { flex-direction: column; }
+    .pane + .pane { border-left: none; border-top: 2px solid var(--border); }
+    .side-panel { width: 100%; border-left: none; border-top: 1px solid var(--border); max-height: 300px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="#"><span class="logo-icon">📝</span><span class="logo-text">Markdown<span>Craft</span></span></a>
+  <nav>
+    <a href="https://shiffasultan-collab.github.io/colorcraft/" target="_blank">ColorCraft</a>
+    <a href="https://shiffasultan-collab.github.io/csvcraft/" target="_blank">CSVCraft</a>
+    <a href="https://shiffasultan-collab.github.io/jsoncraft/" target="_blank">JSONCraft</a>
+    <a href="https://shiffasultan-collab.github.io/jwtcraft/" target="_blank">JWTCraft</a>
+    <a href="https://shiffasultan-collab.github.io/hashcraft/" target="_blank">HashCraft</a>
+    <button class="pro-badge" onclick="openModal()">✨ Pro — $4/mo</button>
+  </nav>
+</header>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <!-- Formatting -->
+  <button class="tb-btn" title="Bold (Ctrl+B)" onclick="insert('**','**','bold text')"><b>B</b></button>
+  <button class="tb-btn" title="Italic (Ctrl+I)" onclick="insert('*','*','italic text')"><i>I</i></button>
+  <button class="tb-btn" title="Strikethrough" onclick="insert('~~','~~','strikethrough')"><s>S</s></button>
+  <button class="tb-btn" title="Inline Code" onclick="insert('`','`','code')">` `</button>
+  <button class="tb-btn" title="Code Block" onclick="insertBlock('```\n','```','code here')">{ }</button>
+  <div class="tb-sep"></div>
+  <!-- Headings -->
+  <button class="tb-btn" onclick="insertLine('# ')">H1</button>
+  <button class="tb-btn" onclick="insertLine('## ')">H2</button>
+  <button class="tb-btn" onclick="insertLine('### ')">H3</button>
+  <div class="tb-sep"></div>
+  <!-- Lists -->
+  <button class="tb-btn" title="Bullet List" onclick="insertLine('- ')">• List</button>
+  <button class="tb-btn" title="Numbered List" onclick="insertLine('1. ')">1. List</button>
+  <button class="tb-btn" title="Task List" onclick="insertLine('- [ ] ')">☐ Task</button>
+  <div class="tb-sep"></div>
+  <!-- Elements -->
+  <button class="tb-btn" title="Link" onclick="insertLink()">🔗 Link</button>
+  <button class="tb-btn" title="Image" onclick="insertImage()">🖼 Image</button>
+  <button class="tb-btn" title="Blockquote" onclick="insertLine('> ')">❝ Quote</button>
+  <button class="tb-btn" title="Horizontal Rule" onclick="insertHR()">— HR</button>
+  <div class="tb-sep"></div>
+  <!-- Tools -->
+  <button class="tb-btn" title="Table Generator" onclick="togglePanel('table')">⊞ Table</button>
+  <button class="tb-btn" title="Cheat Sheet" onclick="togglePanel('cheatsheet')">? Help</button>
+  <button class="tb-btn" title="Copy HTML" onclick="copyHtml()">⟨/⟩ HTML</button>
+  <button class="tb-btn" title="Download .md" onclick="downloadMd()">⬇ .md</button>
+  <button class="tb-btn" title="Clear editor" onclick="clearEditor()" style="color:var(--danger)">✕ Clear</button>
+  <div class="tb-sep"></div>
+  <span class="stats-pill" id="statsPill">0 words · 0 chars</span>
+  <div class="view-toggle">
+    <button class="view-btn active" id="vbEdit" onclick="setView('edit')" title="Editor only">Edit</button>
+    <button class="view-btn active" id="vbSplit" onclick="setView('split')" title="Split view">Split</button>
+    <button class="view-btn" id="vbPreview" onclick="setView('preview')" title="Preview only">Preview</button>
+  </div>
+</div>
+
+<!-- Main area -->
+<div class="editor-area" id="editorArea">
+  <div class="pane" id="editorPane">
+    <div class="pane-label">
+      <span>Markdown</span>
+      <span style="font-size:0.68rem;color:var(--accent2)">← Type here</span>
+    </div>
+    <textarea class="md-input" id="mdInput" placeholder="# Hello, MarkdownCraft!
+
+Start writing Markdown here and see it rendered live on the right.
+
+## Features
+- **Bold**, *italic*, ~~strikethrough~~
+- \`inline code\` and code blocks
+- Tables, blockquotes, task lists
+- [Links](https://example.com) and images
+
+> Use the toolbar above to insert formatting quickly.
+
+\`\`\`javascript
+// Code blocks with syntax hints
+const greet = name => \`Hello, \${name}!\`;
+\`\`\`
+
+| Tool | Category | Price |
+|------|----------|-------|
+| MarkdownCraft | Writing | Free |
+| JSONCraft | Dev | Free |
+| CSVCraft | Data | Free |
+
+- [x] Live preview
+- [x] HTML export
+- [x] Table generator
+- [ ] Pro: PDF export
+" oninput="onInput()" onkeydown="handleKey(event)" spellcheck="true"></textarea>
+  </div>
+  <div class="pane" id="previewPane">
+    <div class="pane-label">
+      <span>Preview</span>
+      <span style="font-size:0.68rem;color:var(--muted)">rendered HTML</span>
+    </div>
+    <div class="md-preview" id="mdPreview"></div>
+  </div>
+  <!-- Side panels -->
+  <div class="side-panel hidden" id="panelCheatsheet">
+    <div class="side-panel-header">
+      📖 Cheat Sheet
+      <button onclick="closePanel()" title="Close">✕</button>
+    </div>
+    <div class="side-panel-body" id="cheatsheetBody"></div>
+  </div>
+  <div class="side-panel hidden" id="panelTable">
+    <div class="side-panel-header">
+      ⊞ Table Generator
+      <button onclick="closePanel()" title="Close">✕</button>
+    </div>
+    <div class="side-panel-body">
+      <div class="tg-controls">
+        <label>Rows <input type="number" id="tgRows" value="3" min="1" max="20" onchange="buildTableGen()"></label>
+        <label>Cols <input type="number" id="tgCols" value="3" min="1" max="10" onchange="buildTableGen()"></label>
+        <label style="display:flex;align-items:center;gap:0.3rem;cursor:pointer"><input type="checkbox" id="tgAlign" onchange="buildTableGen()"> Align</label>
+      </div>
+      <table class="tg-table" id="tgTable"></table>
+      <button class="tg-insert-btn" onclick="insertTable()">Insert Table →</button>
+    </div>
+  </div>
+</div>
+
+<!-- HTML output -->
+<div class="html-out-panel hidden" id="htmlOutPanel">
+  <div class="html-out-header">
+    <span>HTML Output</span>
+    <button class="copy-btn" id="copyHtmlBtn" onclick="copyHtmlOut()">Copy HTML</button>
+    <button class="dl-btn" onclick="downloadHtml()">⬇ .html</button>
+    <button class="dl-btn" onclick="downloadTxt()">⬇ .txt</button>
+    <button style="background:none;border:none;color:var(--muted);cursor:pointer;margin-left:auto;font-size:1rem" onclick="closeHtml()">✕</button>
+  </div>
+  <pre id="htmlOutPre"></pre>
+</div>
+
+<!-- Footer -->
+<div class="footer-links">
+  <a href="https://shiffasultan-collab.github.io/markdowncraft/" class="current">📝 MarkdownCraft</a>
+  <a href="https://shiffasultan-collab.github.io/colorcraft/" target="_blank">🎨 ColorCraft</a>
+  <a href="https://shiffasultan-collab.github.io/csvcraft/" target="_blank">📊 CSVCraft</a>
+  <a href="https://shiffasultan-collab.github.io/jsoncraft/" target="_blank">{ } JSONCraft</a>
+  <a href="https://shiffasultan-collab.github.io/jwtcraft/" target="_blank">🔑 JWTCraft</a>
+  <a href="https://shiffasultan-collab.github.io/hashcraft/" target="_blank"># HashCraft</a>
+  <a href="https://shiffasultan-collab.github.io/urlcraft/" target="_blank">🔗 URLCraft</a>
+  <a href="https://shiffasultan-collab.github.io/regexpal/" target="_blank">🔍 RegexPal</a>
+  <a href="https://shiffasultan-collab.github.io/envdiff/" target="_blank">⚙️ EnvDiff</a>
+  <a href="https://shiffasultan-collab.github.io/cronhelper/" target="_blank">⏰ CronHelper</a>
+  <a href="https://shiffasultan-collab.github.io/readmecraft/" target="_blank">📖 ReadmeCraft</a>
+  <a href="https://shiffasultan-collab.github.io/commitcraft/" target="_blank">💬 CommitCraft</a>
+</div>
+
+<!-- Pro Modal -->
+<div class="modal-bg" id="proModal">
+  <div class="modal">
+    <h2>📝 MarkdownCraft <span>Pro</span></h2>
+    <p>For writers, devs and docs pros who live in Markdown.</p>
+    <ul>
+      <li>Save documents to browser storage</li>
+      <li>Export as PDF (print-ready)</li>
+      <li>Custom themes & preview CSS</li>
+      <li>Multiple document tabs</li>
+      <li>Word count targets & focus mode</li>
+      <li>GitHub Flavored Markdown extras</li>
+    </ul>
+    <button class="cta" onclick="window.open('#gumroad','_blank')">Get Pro — $4/mo</button>
+    <button class="close-modal" onclick="closeModal()">No thanks, free is fine</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config marked ─────────────────────────────────────────────────────────
+marked.setOptions({ breaks: true, gfm: true });
+
+// ── Render ────────────────────────────────────────────────────────────────
+const input = document.getElementById('mdInput');
+const preview = document.getElementById('mdPreview');
+
+function render() {
+  const raw = input.value;
+  const html = DOMPurify.sanitize(marked.parse(raw));
+  preview.innerHTML = html;
+  // Update stats
+  const words = raw.trim() ? raw.trim().split(/\s+/).length : 0;
+  const chars = raw.length;
+  document.getElementById('statsPill').textContent = `${words.toLocaleString()} words · ${chars.toLocaleString()} chars`;
+  // Update HTML output if visible
+  if (!document.getElementById('htmlOutPanel').classList.contains('hidden')) {
+    document.getElementById('htmlOutPre').textContent = html;
+  }
+}
+
+function onInput() { render(); }
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────
+function handleKey(e) {
+  if ((e.ctrlKey || e.metaKey)) {
+    if (e.key === 'b') { e.preventDefault(); insert('**','**','bold text'); }
+    if (e.key === 'i') { e.preventDefault(); insert('*','*','italic text'); }
+    if (e.key === 'k') { e.preventDefault(); insertLink(); }
+  }
+  // Tab = 2 spaces
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = input.selectionStart, end = input.selectionEnd;
+    input.value = input.value.slice(0,s) + '  ' + input.value.slice(end);
+    input.selectionStart = input.selectionEnd = s + 2;
+    render();
+  }
+}
+
+// ── Insert helpers ────────────────────────────────────────────────────────
+function insert(before, after, placeholder) {
+  const s = input.selectionStart, e = input.selectionEnd;
+  const sel = input.value.slice(s, e) || placeholder;
+  const replacement = before + sel + after;
+  input.value = input.value.slice(0,s) + replacement + input.value.slice(e);
+  input.selectionStart = s + before.length;
+  input.selectionEnd = s + before.length + sel.length;
+  input.focus(); render();
+}
+function insertBlock(before, after, placeholder) {
+  const s = input.selectionStart, e = input.selectionEnd;
+  const sel = input.value.slice(s, e) || placeholder;
+  const replacement = '\n' + before + sel + '\n' + after + '\n';
+  input.value = input.value.slice(0,s) + replacement + input.value.slice(e);
+  input.focus(); render();
+}
+function insertLine(prefix) {
+  const s = input.selectionStart;
+  const lineStart = input.value.lastIndexOf('\n', s-1) + 1;
+  input.value = input.value.slice(0,lineStart) + prefix + input.value.slice(lineStart);
+  input.selectionStart = input.selectionEnd = lineStart + prefix.length;
+  input.focus(); render();
+}
+function insertHR() {
+  const s = input.selectionStart;
+  const addition = '\n\n---\n\n';
+  input.value = input.value.slice(0,s) + addition + input.value.slice(s);
+  input.selectionStart = input.selectionEnd = s + addition.length;
+  input.focus(); render();
+}
+function insertLink() {
+  const s = input.selectionStart, e = input.selectionEnd;
+  const sel = input.value.slice(s,e) || 'link text';
+  const url = prompt('URL:', 'https://');
+  if (!url) return;
+  const md = `[${sel}](${url})`;
+  input.value = input.value.slice(0,s) + md + input.value.slice(e);
+  input.focus(); render();
+}
+function insertImage() {
+  const s = input.selectionStart, e = input.selectionEnd;
+  const sel = input.value.slice(s,e) || 'alt text';
+  const url = prompt('Image URL:', 'https://');
+  if (!url) return;
+  const md = `![${sel}](${url})`;
+  input.value = input.value.slice(0,s) + md + input.value.slice(e);
+  input.focus(); render();
+}
+function insertSnippet(text) {
+  const s = input.selectionStart;
+  input.value = input.value.slice(0,s) + text + input.value.slice(s);
+  input.selectionStart = input.selectionEnd = s + text.length;
+  input.focus(); render();
+}
+
+// ── View modes ────────────────────────────────────────────────────────────
+function setView(mode) {
+  const ep = document.getElementById('editorPane');
+  const pp = document.getElementById('previewPane');
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  if (mode === 'edit') { ep.classList.remove('hidden'); pp.classList.add('hidden'); document.getElementById('vbEdit').classList.add('active'); }
+  else if (mode === 'preview') { ep.classList.add('hidden'); pp.classList.remove('hidden'); document.getElementById('vbPreview').classList.add('active'); }
+  else { ep.classList.remove('hidden'); pp.classList.remove('hidden'); document.getElementById('vbSplit').classList.add('active'); }
+}
+
+// ── Side panels ──────────────────────────────────────────────────────────
+let activePanel = null;
+function togglePanel(name) {
+  const panels = { cheatsheet: 'panelCheatsheet', table: 'panelTable' };
+  if (activePanel === name) { closePanel(); return; }
+  Object.values(panels).forEach(id => document.getElementById(id).classList.add('hidden'));
+  document.getElementById(panels[name]).classList.remove('hidden');
+  activePanel = name;
+  if (name === 'table') buildTableGen();
+}
+function closePanel() {
+  document.getElementById('panelCheatsheet').classList.add('hidden');
+  document.getElementById('panelTable').classList.add('hidden');
+  activePanel = null;
+}
+
+// ── Cheat sheet ──────────────────────────────────────────────────────────
+const CHEATSHEET = [
+  { section: 'Headings', items: [
+    { syntax: '# H1', result: 'Heading 1', insert: '# Heading 1\n' },
+    { syntax: '## H2', result: 'Heading 2', insert: '## Heading 2\n' },
+    { syntax: '### H3', result: 'Heading 3', insert: '### Heading 3\n' },
+  ]},
+  { section: 'Emphasis', items: [
+    { syntax: '**bold**', result: 'bold', insert: '**bold text**' },
+    { syntax: '*italic*', result: 'italic', insert: '*italic text*' },
+    { syntax: '~~strike~~', result: '~~strike~~', insert: '~~strikethrough~~' },
+    { syntax: '`code`', result: 'inline code', insert: '`code`' },
+  ]},
+  { section: 'Lists', items: [
+    { syntax: '- item', result: 'Bullet list', insert: '- Item 1\n- Item 2\n- Item 3\n' },
+    { syntax: '1. item', result: 'Numbered list', insert: '1. First\n2. Second\n3. Third\n' },
+    { syntax: '- [ ] task', result: 'Task list', insert: '- [x] Done\n- [ ] Todo\n' },
+  ]},
+  { section: 'Links & Images', items: [
+    { syntax: '[text](url)', result: 'hyperlink', insert: '[Link text](https://example.com)' },
+    { syntax: '![alt](url)', result: 'image', insert: '![Alt text](https://via.placeholder.com/300)' },
+  ]},
+  { section: 'Blocks', items: [
+    { syntax: '> quote', result: 'Blockquote', insert: '> Your blockquote here\n' },
+    { syntax: '---', result: 'Horizontal rule', insert: '\n---\n' },
+    { syntax: '```lang\n```', result: 'Code block', insert: '```javascript\n// your code here\n```\n' },
+  ]},
+  { section: 'Tables', items: [
+    { syntax: '| A | B |', result: 'Table', insert: '| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1   | Cell 2   |\n| Cell 3   | Cell 4   |\n' },
+  ]},
+];
+
+(function buildCheatsheet() {
+  const el = document.getElementById('cheatsheetBody');
+  el.innerHTML = CHEATSHEET.map(sec => `
+    <div class="cs-section">
+      <h4>${sec.section}</h4>
+      ${sec.items.map(item => `
+        <div class="cs-row">
+          <span class="cs-syntax">${item.syntax}</span>
+          <span class="cs-result">${item.result}</span>
+          <button class="cs-insert" onclick='insertSnippet(${JSON.stringify(item.insert)})'>Insert</button>
+        </div>`).join('')}
+    </div>`).join('');
+})();
+
+// ── Table Generator ───────────────────────────────────────────────────────
+function buildTableGen() {
+  const rows = parseInt(document.getElementById('tgRows').value) || 3;
+  const cols = parseInt(document.getElementById('tgCols').value) || 3;
+  const table = document.getElementById('tgTable');
+  let html = '<thead><tr>';
+  for (let c = 0; c < cols; c++) html += `<th><input value="Header ${c+1}" placeholder="Header"></th>`;
+  html += '</tr></thead><tbody>';
+  for (let r = 0; r < rows; r++) {
+    html += '<tr>';
+    for (let c = 0; c < cols; c++) html += `<td><input placeholder="Cell" value=""></td>`;
+    html += '</tr>';
+  }
+  table.innerHTML = html + '</tbody>';
+}
+
+function insertTable() {
+  const table = document.getElementById('tgTable');
+  const headers = [...table.querySelectorAll('thead input')].map(i => i.value || 'Header');
+  const bodyRows = [...table.querySelectorAll('tbody tr')].map(tr =>
+    [...tr.querySelectorAll('input')].map(i => i.value || ' ')
+  );
+  const sep = headers.map(() => '---');
+  const md = [
+    '| ' + headers.join(' | ') + ' |',
+    '| ' + sep.join(' | ') + ' |',
+    ...bodyRows.map(row => '| ' + row.join(' | ') + ' |')
+  ].join('\n') + '\n';
+  insertSnippet('\n' + md + '\n');
+  closePanel();
+  toast('Table inserted ✓');
+}
+
+// ── HTML output ───────────────────────────────────────────────────────────
+function copyHtml() {
+  const panel = document.getElementById('htmlOutPanel');
+  panel.classList.remove('hidden');
+  const html = DOMPurify.sanitize(marked.parse(input.value));
+  document.getElementById('htmlOutPre').textContent = html;
+  render();
+  toast('HTML output panel opened');
+}
+function copyHtmlOut() {
+  const html = DOMPurify.sanitize(marked.parse(input.value));
+  navigator.clipboard.writeText(html).then(() => {
+    const btn = document.getElementById('copyHtmlBtn');
+    btn.classList.add('copied'); btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.classList.remove('copied'); btn.textContent = 'Copy HTML'; }, 1800);
+    toast('HTML copied ✓');
+  });
+}
+function closeHtml() { document.getElementById('htmlOutPanel').classList.add('hidden'); }
+
+// ── Downloads ─────────────────────────────────────────────────────────────
+function downloadMd() {
+  const blob = new Blob([input.value], {type:'text/markdown'});
+  dl(blob, 'markdowncraft.md');
+}
+function downloadHtml() {
+  const html = DOMPurify.sanitize(marked.parse(input.value));
+  const full = `<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>MarkdownCraft Export</title></head>\n<body>\n${html}\n</body>\n</html>`;
+  const blob = new Blob([full], {type:'text/html'});
+  dl(blob, 'markdowncraft.html');
+}
+function downloadTxt() {
+  const text = preview.innerText;
+  const blob = new Blob([text], {type:'text/plain'});
+  dl(blob, 'markdowncraft.txt');
+}
+function dl(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+  toast('Downloaded ' + name + ' ✓');
+}
+
+// ── Misc ──────────────────────────────────────────────────────────────────
+function clearEditor() {
+  if (!input.value || confirm('Clear the editor?')) { input.value = ''; render(); }
+}
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'toast show';
+  setTimeout(() => el.className = 'toast', 2000);
+}
+function openModal() { document.getElementById('proModal').classList.add('open'); }
+function closeModal() { document.getElementById('proModal').classList.remove('open'); }
+document.getElementById('proModal').addEventListener('click', e => { if (e.target===e.currentTarget) closeModal(); });
+
+// ── Init ──────────────────────────────────────────────────────────────────
+buildTableGen();
+// Load placeholder text into editor
+input.value = `# Hello, MarkdownCraft! 👋
+
+Write **Markdown** here and see it rendered live on the right.
+
+## Features at a glance
+
+- 🖊️ **Live preview** — changes render instantly
+- 🔧 **Toolbar** — bold, italic, links, lists, tables, code blocks
+- ⊞ **Table generator** — build tables with a GUI
+- 📖 **Cheat sheet** — quick reference for all syntax
+- ⟨/⟩ **HTML export** — copy or download the rendered HTML
+- ⬇ **Download** — save as .md, .html, or .txt
+
+## Quick example
+
+> Use the toolbar above or keyboard shortcuts: **Ctrl+B** (bold), **Ctrl+I** (italic), **Ctrl+K** (link).
+
+\`\`\`javascript
+// Code blocks look great too
+const greet = name => \`Hello, \${name}!\`;
+console.log(greet('MarkdownCraft'));
+\`\`\`
+
+| Tool | Category | Price |
+|------|----------|-------|
+| MarkdownCraft | Writing | Free |
+| JSONCraft | Dev | Free |
+| CSVCraft | Data | Free |
+| ColorCraft | Design | Free |
+
+- [x] Live preview working
+- [x] Toolbar ready
+- [x] Table generator
+- [ ] *Pro: PDF export, saved docs*
+
+---
+
+Start editing above and watch the magic happen on the right →`;
+render();
+</script>
+</body>
+</html>
